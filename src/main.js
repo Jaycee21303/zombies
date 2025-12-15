@@ -57,14 +57,36 @@ class PointerLook {
     this.yaw = 0;
     this.pitch = 0;
     this.enabled = false;
+    this.locked = false;
+    this.lastPos = null;
     this.sensitivity = 0.0025;
     document.addEventListener('mousemove', (e) => {
-      if (!this.enabled) return;
-      this.yaw -= e.movementX * this.sensitivity;
-      this.pitch -= e.movementY * this.sensitivity;
+      if (!this.enabled) {
+        this.lastPos = null;
+        return;
+      }
+      let dx = e.movementX;
+      let dy = e.movementY;
+      if (!this.locked) {
+        if (this.lastPos) {
+          dx = e.clientX - this.lastPos.x;
+          dy = e.clientY - this.lastPos.y;
+        }
+        this.lastPos = { x: e.clientX, y: e.clientY };
+      }
+      this.yaw -= dx * this.sensitivity;
+      this.pitch -= dy * this.sensitivity;
       this.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.pitch));
       this.update();
     });
+  }
+  setEnabled(flag) {
+    this.enabled = flag;
+    if (!flag) this.lastPos = null;
+  }
+  setLocked(flag) {
+    this.locked = flag;
+    if (!flag) this.lastPos = null;
   }
   update() {
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
@@ -347,6 +369,7 @@ let enemyQueue = [];
 let betweenRounds = false;
 let spawnTimer = 0;
 let spawnInterval = 1.2;
+let playing = false;
 
 function resetMatch() {
   zombies.forEach((z) => z.dispose());
@@ -551,19 +574,16 @@ window.addEventListener('keyup', (e) => {
 });
 
 window.addEventListener('mousedown', (e) => {
-  if (!pointer.enabled) return;
+  if (!playing) return;
   if (player.down) return;
   mouseDown = true;
 });
 window.addEventListener('mouseup', () => { mouseDown = false; });
 
-document.body.addEventListener('click', () => {
-  if (!pointer.enabled) return;
-});
-
 function enableGameplay() {
   menuEl.style.display = 'none';
-  pointer.enabled = true;
+  playing = true;
+  pointer.setEnabled(true);
   if (audioCtx.state === 'suspended') audioCtx.resume();
   if (zombies.length === 0 && enemyQueue.length === 0) resetMatch();
 }
@@ -572,7 +592,6 @@ function requestPointerLockWithFallback() {
   try {
     renderer.domElement.requestPointerLock();
   } catch (err) {
-    enableGameplay();
     showMessage('Pointer lock unavailable, using fallback controls');
   }
 }
@@ -584,22 +603,21 @@ startBtn.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
-    pointer.enabled = true;
+    pointer.setLocked(true);
   } else {
-    pointer.enabled = false;
+    pointer.setLocked(false);
     mouseDown = false;
   }
 });
 
 document.addEventListener('pointerlockerror', () => {
-  enableGameplay();
   showMessage('Pointer lock denied. Gameplay enabled with fallback controls');
 });
 
 function render(now) {
   const delta = now - lastTime;
   lastTime = now;
-  if (pointer.enabled && !player.down) {
+  if (playing && !player.down) {
     update(delta);
   }
   renderer.render(scene, camera);
