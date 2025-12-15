@@ -25,8 +25,6 @@ const ammoEl = document.getElementById('ammo');
 const roundEl = document.getElementById('round');
 const healthEl = document.getElementById('health');
 const messageEl = document.getElementById('messages');
-const menuEl = document.getElementById('menu');
-const startBtn = document.getElementById('start');
 
 const input = {
   forward: false,
@@ -370,6 +368,7 @@ let betweenRounds = false;
 let spawnTimer = 0;
 let spawnInterval = 1.2;
 let playing = false;
+let pointerLockRequested = false;
 
 function resetMatch() {
   zombies.forEach((z) => z.dispose());
@@ -576,12 +575,15 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener('mousedown', (e) => {
   if (!playing) return;
   if (player.down) return;
+  if (!pointerLockRequested && document.pointerLockElement !== renderer.domElement) {
+    requestPointerLockWithFallback();
+    pointerLockRequested = true;
+  }
   mouseDown = true;
 });
 window.addEventListener('mouseup', () => { mouseDown = false; });
 
 function enableGameplay() {
-  menuEl.style.display = 'none';
   playing = true;
   pointer.setEnabled(true);
   if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -596,22 +598,19 @@ function requestPointerLockWithFallback() {
   }
 }
 
-startBtn.addEventListener('click', () => {
-  enableGameplay();
-  requestPointerLockWithFallback();
-});
-
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
     pointer.setLocked(true);
   } else {
     pointer.setLocked(false);
     mouseDown = false;
+    pointerLockRequested = false;
   }
 });
 
 document.addEventListener('pointerlockerror', () => {
   showMessage('Pointer lock denied. Gameplay enabled with fallback controls');
+  pointerLockRequested = false;
 });
 
 function render(now) {
@@ -624,5 +623,5 @@ function render(now) {
   requestAnimationFrame(render);
 }
 
-resetMatch();
+enableGameplay();
 requestAnimationFrame(render);
