@@ -561,20 +561,39 @@ document.body.addEventListener('click', () => {
   if (!pointer.enabled) return;
 });
 
-startBtn.addEventListener('click', () => {
+function enableGameplay() {
   menuEl.style.display = 'none';
-  renderer.domElement.requestPointerLock();
+  pointer.enabled = true;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (zombies.length === 0 && enemyQueue.length === 0) resetMatch();
+}
+
+function requestPointerLockWithFallback() {
+  try {
+    renderer.domElement.requestPointerLock();
+  } catch (err) {
+    enableGameplay();
+    showMessage('Pointer lock unavailable, using fallback controls');
+  }
+}
+
+startBtn.addEventListener('click', () => {
+  enableGameplay();
+  requestPointerLockWithFallback();
 });
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
     pointer.enabled = true;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    if (zombies.length === 0 && enemyQueue.length === 0) resetMatch();
   } else {
     pointer.enabled = false;
     mouseDown = false;
   }
+});
+
+document.addEventListener('pointerlockerror', () => {
+  enableGameplay();
+  showMessage('Pointer lock denied. Gameplay enabled with fallback controls');
 });
 
 function render(now) {
