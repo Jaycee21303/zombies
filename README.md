@@ -5,7 +5,7 @@ A lightweight, single-page Temple Run–style endless runner built with HTML5 ca
 ## How to play
 - Open `index.html` in a modern browser.
 - The runner starts moving immediately.
-- Controls: Left/Right (or A/D) to change lanes, Up/W/Space to jump, R to restart after a crash.
+- Controls: Left/Right (or A/D) to change lanes, Up/W/Space to jump, R to restart after a crash. On touch devices, swipe left/right to switch lanes and swipe up to jump; tap after a crash to restart.
 - Avoid obstacles, collect coins, and survive as long as possible to push your score higher.
 
 ## Development notes
