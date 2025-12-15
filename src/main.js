@@ -9,7 +9,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
+scene.background = new THREE.Color(0x1a1f29);
 const camera = new THREE.PerspectiveCamera(75, canvasWidth / canvasHeight, 0.1, 1000);
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.35);
@@ -25,8 +25,6 @@ const ammoEl = document.getElementById('ammo');
 const roundEl = document.getElementById('round');
 const healthEl = document.getElementById('health');
 const messageEl = document.getElementById('messages');
-const menuEl = document.getElementById('menu');
-const startBtn = document.getElementById('start');
 
 const input = {
   forward: false,
@@ -57,14 +55,36 @@ class PointerLook {
     this.yaw = 0;
     this.pitch = 0;
     this.enabled = false;
+    this.locked = false;
+    this.lastPos = null;
     this.sensitivity = 0.0025;
     document.addEventListener('mousemove', (e) => {
-      if (!this.enabled) return;
-      this.yaw -= e.movementX * this.sensitivity;
-      this.pitch -= e.movementY * this.sensitivity;
+      if (!this.enabled) {
+        this.lastPos = null;
+        return;
+      }
+      let dx = e.movementX;
+      let dy = e.movementY;
+      if (!this.locked) {
+        if (this.lastPos) {
+          dx = e.clientX - this.lastPos.x;
+          dy = e.clientY - this.lastPos.y;
+        }
+        this.lastPos = { x: e.clientX, y: e.clientY };
+      }
+      this.yaw -= dx * this.sensitivity;
+      this.pitch -= dy * this.sensitivity;
       this.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.pitch));
       this.update();
     });
+  }
+  setEnabled(flag) {
+    this.enabled = flag;
+    if (!flag) this.lastPos = null;
+  }
+  setLocked(flag) {
+    this.locked = flag;
+    if (!flag) this.lastPos = null;
   }
   update() {
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
@@ -79,7 +99,7 @@ const floorSize = { x: 24, z: 24 };
 const startRoom = new THREE.Vector3(0, 0, 0);
 
 const objects = [];
-function addBox(pos, size, color = 0x333333) {
+function addBox(pos, size, color = 0x4a4f5a) {
   const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
   const mat = new THREE.MeshLambertMaterial({ color });
   const mesh = new THREE.Mesh(geo, mat);
@@ -90,18 +110,22 @@ function addBox(pos, size, color = 0x333333) {
 }
 
 function makeRoom(origin) {
-  addBox(origin.clone().add(new THREE.Vector3(0, -0.5, 0)), { x: floorSize.x, y: 1, z: floorSize.z }, 0x111111);
+  addBox(origin.clone().add(new THREE.Vector3(0, -0.5, 0)), { x: floorSize.x, y: 1, z: floorSize.z }, 0x2f333b);
   const wallThickness = 0.5;
-  addBox(origin.clone().add(new THREE.Vector3(0, 1.75, -floorSize.z / 2)), { x: floorSize.x, y: 3.5, z: wallThickness }, 0x222222);
-  addBox(origin.clone().add(new THREE.Vector3(0, 1.75, floorSize.z / 2)), { x: floorSize.x, y: 3.5, z: wallThickness }, 0x222222);
-  addBox(origin.clone().add(new THREE.Vector3(-floorSize.x / 2, 1.75, 0)), { x: wallThickness, y: 3.5, z: floorSize.z }, 0x222222);
-  addBox(origin.clone().add(new THREE.Vector3(floorSize.x / 2, 1.75, 0)), { x: wallThickness, y: 3.5, z: floorSize.z }, 0x222222);
+  addBox(origin.clone().add(new THREE.Vector3(0, 1.75, -floorSize.z / 2)), { x: floorSize.x, y: 3.5, z: wallThickness }, 0x545a68);
+  addBox(origin.clone().add(new THREE.Vector3(0, 1.75, floorSize.z / 2)), { x: floorSize.x, y: 3.5, z: wallThickness }, 0x545a68);
+  addBox(origin.clone().add(new THREE.Vector3(-floorSize.x / 2, 1.75, 0)), { x: wallThickness, y: 3.5, z: floorSize.z }, 0x565e6c);
+  addBox(origin.clone().add(new THREE.Vector3(floorSize.x / 2, 1.75, 0)), { x: wallThickness, y: 3.5, z: floorSize.z }, 0x565e6c);
 }
 
 makeRoom(startRoom);
 
 const secondRoomOrigin = new THREE.Vector3(floorSize.x + 4, 0, 0);
 makeRoom(secondRoomOrigin);
+
+const grid = new THREE.GridHelper(floorSize.x * 1.8, floorSize.x, 0x6c7687, 0x3e444f);
+grid.position.y = 0.01;
+scene.add(grid);
 
 function makeDoorway(pos, size, cost) {
   const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
@@ -347,6 +371,8 @@ let enemyQueue = [];
 let betweenRounds = false;
 let spawnTimer = 0;
 let spawnInterval = 1.2;
+let playing = false;
+let pointerLockRequested = false;
 
 function resetMatch() {
   zombies.forEach((z) => z.dispose());
@@ -551,41 +577,56 @@ window.addEventListener('keyup', (e) => {
 });
 
 window.addEventListener('mousedown', (e) => {
-  if (!pointer.enabled) return;
+  if (!playing) return;
   if (player.down) return;
+  if (!pointerLockRequested && document.pointerLockElement !== renderer.domElement) {
+    requestPointerLockWithFallback();
+    pointerLockRequested = true;
+  }
   mouseDown = true;
 });
 window.addEventListener('mouseup', () => { mouseDown = false; });
 
-document.body.addEventListener('click', () => {
-  if (!pointer.enabled) return;
-});
+function enableGameplay() {
+  playing = true;
+  pointer.setEnabled(true);
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (zombies.length === 0 && enemyQueue.length === 0) resetMatch();
+  showMessage('WASD to move, click to shoot. Pointer lock optional.', 4);
+}
 
-startBtn.addEventListener('click', () => {
-  menuEl.style.display = 'none';
-  renderer.domElement.requestPointerLock();
-});
+function requestPointerLockWithFallback() {
+  try {
+    renderer.domElement.requestPointerLock();
+  } catch (err) {
+    showMessage('Pointer lock unavailable, using fallback controls');
+  }
+}
 
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === renderer.domElement) {
-    pointer.enabled = true;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    if (zombies.length === 0 && enemyQueue.length === 0) resetMatch();
+    pointer.setLocked(true);
   } else {
-    pointer.enabled = false;
+    pointer.setLocked(false);
     mouseDown = false;
+    pointerLockRequested = false;
   }
+});
+
+document.addEventListener('pointerlockerror', () => {
+  showMessage('Pointer lock denied. Gameplay enabled with fallback controls');
+  pointerLockRequested = false;
 });
 
 function render(now) {
   const delta = now - lastTime;
   lastTime = now;
-  if (pointer.enabled && !player.down) {
+  if (playing && !player.down) {
     update(delta);
   }
   renderer.render(scene, camera);
   requestAnimationFrame(render);
 }
 
-resetMatch();
+enableGameplay();
 requestAnimationFrame(render);
